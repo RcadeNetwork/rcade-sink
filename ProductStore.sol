@@ -47,7 +47,7 @@ interface IStakingContract {
  * @param rcadeToken Address of the RCADE token contract
  * @param quoterContract Address of the Uniswap V3 QuoterV2 contract
  * @param stakingContract Address of the staking contract
- * @param slippage Slippage tolerance in basis points (e.g., 100 = 1%)
+ * @param slippage Slippage tolerance in permille (e.g., 30 = 3%)
  * @param path Uniswap swap path for USDT to RCADE conversion
  */
 struct InitializeParams {
@@ -143,6 +143,7 @@ contract ProductStore is
         uint256 timestamp
     );
 
+
     /**
      * @notice Event emitted when quoter contract is updated
      * @param oldQuoter Previous quoter contract address
@@ -220,7 +221,7 @@ contract ProductStore is
     /// @notice RCADE token contract interface
     ERC20 public _rcadeToken;
 
-    /// @notice Slippage tolerance in permille (e.g. 150 = 15%)
+    /// @notice Slippage tolerance in permille (e.g. 30 = 3%)
     uint256 public _slippage;
 
     /// @notice Uniswap swap path for USDT to RCADE conversion
@@ -228,6 +229,9 @@ contract ProductStore is
 
     /// @notice Staking contract interface for automatic RCADE staking
     IStakingContract public _stakingContract;
+
+    /// @notice Maximum allowed slippage in permille (e.g. 50 = 5%)
+    uint256 public constant MAX_SLIPPAGE = 50;
 
     /********** CONSTRUCTOR **********/
 
@@ -246,6 +250,7 @@ contract ProductStore is
     function initialize(InitializeParams calldata params) public initializer {
         _isValidAddress(params.initialOwner);
         _isValidAddress(params.treasury);
+        _validateSlippage(params.slippage);
         __Pausable_init();
         __Ownable_init(params.initialOwner);
         __UUPSUpgradeable_init();
@@ -269,6 +274,7 @@ contract ProductStore is
      * @dev Only the contract owner can add products
      * @dev Arrays must have the same length
      * @dev Product IDs must not already exist
+     * @dev Prices must be greater than zero
      */
     function addProduct(
         string[] calldata productIds,
@@ -280,6 +286,7 @@ contract ProductStore is
         );
         for (uint256 i = 0; i < productIds.length; i++) {
             _checkIsProductNotExists(productIds[i]);
+            _validatePrice(prices[i]);
             _productPrice[productIds[i]] = prices[i];
         }
         emit ProductAdded(productIds, prices, block.timestamp);
@@ -292,6 +299,7 @@ contract ProductStore is
      * @dev Only the contract owner can update products
      * @dev Arrays must have the same length
      * @dev Product IDs must already exist
+     * @dev Prices must be greater than zero
      */
     function updateProduct(
         string[] calldata productIds,
@@ -303,6 +311,7 @@ contract ProductStore is
         );
         for (uint256 i = 0; i < productIds.length; i++) {
             _checkIsProductExists(productIds[i]);
+            _validatePrice(prices[i]);
             _productPrice[productIds[i]] = prices[i];
         }
         emit ProductUpdated(productIds, prices, block.timestamp);
@@ -375,16 +384,19 @@ contract ProductStore is
 
     /**
      * @notice Update slippage tolerance for price quotes
-     * @param slippage New slippage tolerance in basis points (e.g., 100 = 1%)
+     * @param slippage New slippage tolerance in permille (e.g., 30 = 3%)
      * @dev Only the contract owner can update slippage
+     * @dev Slippage cannot exceed MAX_SLIPPAGE (5%)
      */
     function updateSlippage(
         uint256 slippage
         ) external onlyOwner {
+        _validateSlippage(slippage);
         uint256 oldSlippage = _slippage;
         _slippage = slippage;
         emit SlippageUpdated(oldSlippage, slippage, block.timestamp);
     }
+
 
     /**
      * @notice Update Uniswap swap path for USDT to RCADE conversion
@@ -512,7 +524,7 @@ contract ProductStore is
      * @param amount Base amount to apply slippage to
      * @return Amount with slippage added
      * @dev Slippage is calculated as a percentage of the base amount
-     * @dev Slippage is stored in basis points (e.g., 100 = 1%)
+     * @dev Slippage is stored in permille (e.g., 30 = 3%)
      */
     function getAmountWithSlippage(
         uint256 amount
@@ -541,6 +553,25 @@ contract ProductStore is
     function _isValidAddress(address addr) private pure {
         require(addr != address(0), "ProductStore: Invalid address");
     }
+
+    /**
+     * @notice Validate that slippage is within acceptable limits
+     * @param slippage Slippage value to validate
+     * @dev Reverts if slippage exceeds MAX_SLIPPAGE
+     */
+    function _validateSlippage(uint256 slippage) private pure {
+        require(slippage <= MAX_SLIPPAGE, "ProductStore: Slippage exceeds maximum allowed");
+    }
+
+    /**
+     * @notice Validate that a price is greater than zero
+     * @param price Price value to validate
+     * @dev Reverts if price is zero
+     */
+    function _validatePrice(uint256 price) private pure {
+        require(price > 0, "ProductStore: Price must be greater than zero");
+    }
+
 
     /**
      * @notice Check if a token is supported for payments
