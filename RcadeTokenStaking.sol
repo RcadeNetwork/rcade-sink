@@ -276,13 +276,17 @@ contract RcadeTokenStaking is
         uint256 d2ClaimableAmount = (amount * stakeConfig.d2StakePercentage) /
             100;
 
+        rcadeToken.transferFrom(tx.origin, address(this), amount);
+
+        if (d1ClaimableAmount == 0 && d2ClaimableAmount == 0) {
+            return;
+        }
+
         uint256 stakeId = _stakeIdCounter.current();
         _stakeIdCounter.increment();
         uint256 stakedAt = block.timestamp;
         uint256 d1ClaimableAt = stakedAt + stakeConfig.stakeDurationD1;
         uint256 d2ClaimableAt = stakedAt + stakeConfig.stakeDurationD2;
-
-        rcadeToken.transferFrom(tx.origin, address(this), amount);
 
         stakes[stakeId] = Stake({
             wallet: tx.origin,
